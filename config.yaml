@@ -1,0 +1,39 @@
+# Shyamnagar/Gabura coastal impact forecasting - project configuration
+# All paths are relative to the Thesis/ folder.
+
+project:
+  name: shyamnagar_impact_forecast
+  crs_projected: EPSG:32645      # WGS 84 / UTM 45N (metres) - all analysis layers
+  crs_geographic: EPSG:4326
+
+study_area:
+  upazila_osm_relation: 5295537  # Shyamnagar Upazila (admin_level 6 in OSM)
+  upazila_name: Shyamnagar
+  district_name: Satkhira
+  pilot_union: Gabura
+  # Sundarbans reserved forest cells are kept in the grid but flagged, so
+  # models can be trained on settled land only.
+
+grid:
+  cell_size_m: 500
+  min_land_fraction: 0.05        # cells with less land inside the upazila are dropped
+  id_prefix: G
+
+paths:
+  bronze: 01_bronze_raw
+  silver: 02_silver_clean
+  gold: 03_gold_analysis_ready
+  outputs: 06_outputs
+  docs: 00_documentation
+
+periods:
+  history_start: 2015-01-01
+  history_end: 2025-12-31
+
+labels:
+  water_fraction_threshold: 0.20
+  sensitivity_thresholds: [0.10, 0.20, 0.30]
+
+forecast:
+  short_lead_days: [1, 3]
+  long_lead_days: [5, 7]

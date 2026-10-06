@@ -1,0 +1,38 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# Raw downloads are large and fully reproducible from 05_scripts/
+# (see 00_documentation/download_manifest.csv for sources and checksums).
+01_bronze_raw/**
+!01_bronze_raw/**/
+!01_bronze_raw/**/.gitkeep
+!01_bronze_raw/boundary/shyamnagar_boundary_osm_raw_20260728.geojson
+
+# Large derived rasters / tables
+*.tif
+*.tif.gz
+*.nc
+*.grib
+*.parquet
+*.part
+02_silver_clean/flood_masks/**
+!02_silver_clean/flood_masks/.gitkeep
+03_gold_analysis_ready/master_dataset/**
+!03_gold_analysis_ready/master_dataset/.gitkeep
+04_qgis_project/*.qgz~
+07_backup/**
+!07_backup/.gitkeep
+
+# Papers are kept locally only (publisher copyright); see references/README.md
+references/papers/*.pdf
+
+# Logs / OS / editor
+00_documentation/processing_log.txt
+*.log
+.DS_Store
+Thumbs.db
+~$*
+.vscode/
