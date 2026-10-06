@@ -45,7 +45,7 @@ config.yaml              all paths, CRS, grid size, thresholds
 | 3. Static layers: DEM, JRC water, WorldCover, WorldPop, OSM roads | `03_download_static.py` | done |
 | 3b. OSM facilities, waterways, embankments, sluices (Geofabrik extract) | `03b_osm_features.py` | done |
 | 4. Static features per grid cell (31 features) | `04_static_features.py` | done |
-| 5. CHIRPS daily rainfall + ERA5/ERA5-Land daily, 2015–2025 | `05_download_climate.py` | done |
+| 5. CHIRPS daily rainfall + ERA5/ERA5-Land daily, 2015–2025 | `05_download_climate.py` | running (ERA5 rate-limited by Open-Meteo; resumable) |
 | 6. Sentinel-1 RTC VV/VH stack, 20 m, settled unions | `06_sentinel1_stack.py` | tested on Amphan window; full archive pending |
 | 7. Flood labels (change detection + calibration on non-event dates) | | next |
 | 8. Dynamic features, master dataset, models, SHAP, persistence, impact, dashboard | | planned |
