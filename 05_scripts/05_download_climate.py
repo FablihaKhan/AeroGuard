@@ -101,13 +101,14 @@ def open_meteo(pts, start, end, model, variables):
         params = {"latitude": ",".join(map(str, chunk.lat)), "longitude": ",".join(map(str, chunk.lon)),
                   "start_date": start, "end_date": end, "daily": ",".join(variables),
                   "models": model, "timezone": "Asia/Dhaka"}
-        for attempt in range(6):
+        for attempt in range(8):
             r = requests.get(OPEN_METEO, params=params, timeout=120, headers={"User-Agent": USER_AGENT})
-            if r.status_code == 429:                     # free-tier rate limit: back off
-                time.sleep(60 * (attempt + 1))
-                continue
-            r.raise_for_status()
-            break
+            if r.status_code != 429:
+                break
+            # free tier is limited per minute/hour/day: back off up to ~1 h in total
+            log.info("open-meteo rate limit, waiting %d s", 120 * (attempt + 1))
+            time.sleep(120 * (attempt + 1))
+        r.raise_for_status()
         data = r.json()
         data = data if isinstance(data, list) else [data]
         for pid, d in zip(chunk.point_id, data):
@@ -123,6 +124,10 @@ def era5(bounds, years):
     out_dir.mkdir(parents=True, exist_ok=True)
     pts = era5_points(bounds)
     pts.to_csv(out_dir / "era5_points.csv", index=False)
+    pts["coarse_id"] = ("C" + (pts.lat * 4).round().astype(int).astype(str) + "_"
+                        + (pts.lon * 4).round().astype(int).astype(str))
+    coarse = pts.groupby("coarse_id")[["lat", "lon"]].first().reset_index().rename(columns={"coarse_id": "point_id"})
+    coarse["lat"], coarse["lon"] = (coarse.lat * 4).round() / 4, (coarse.lon * 4).round() / 4
     for year in years:
         out = out_dir / f"era5_daily_{year}.csv"
         if out.exists():
@@ -130,8 +135,10 @@ def era5(bounds, years):
             continue
         start, end = f"{year}-01-01", f"{year}-12-31"
         land = open_meteo(pts, start, end, "era5_land", ERA5_LAND_VARS)
-        atmos = open_meteo(pts, start, end, "era5", ERA5_VARS)
-        df = land.merge(atmos, on=["point_id", "date"]).merge(pts, on="point_id")
+        # ERA5 (rain, wind) is 0.25 deg, so query each 0.25 deg cell once, not every 0.1 deg point.
+        atmos = open_meteo(coarse, start, end, "era5", ERA5_VARS).rename(columns={"point_id": "coarse_id"})
+        df = (land.merge(pts, on="point_id").merge(atmos, on=["coarse_id", "date"])
+              .drop(columns="coarse_id"))
         df.to_csv(out, index=False)
         log.info("ERA5 %d: %d points x %d days, null soil moisture %.1f%%", year, len(pts),
                  df.date.nunique(), 100 * df.soil_moisture_0_to_7cm_mean.isna().mean())
@@ -143,8 +150,8 @@ def main():
     end = dt.date.fromisoformat(str(CONFIG["periods"]["history_end"])).year
     years = range(start, end + 1)
     log.info("bounds %s, years %d-%d", [round(b, 3) for b in bounds], start, end)
-    era5(bounds, years)
     chirps(bounds, years)
+    era5(bounds, years)
 
 
 if __name__ == "__main__":
