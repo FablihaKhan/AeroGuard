@@ -42,11 +42,30 @@ config.yaml              all paths, CRS, grid size, thresholds
 |---|---|---|
 | 1. Clean study-area boundary, unions, Gabura pilot | `01_make_boundary.py` | done |
 | 2. 500 m grid | `02_make_grid.py` | done (6,851 cells: 1,881 settled, 4,970 Sundarbans, 173 Gabura) |
-| 3. Static layers: DEM, JRC water, WorldCover, WorldPop, OSM | `03_download_static.py` | rasters + roads done; OSM facilities/water pending |
-| 4. Static features per grid cell | | next |
-| 5. Rainfall / ERA5-Land daily features | | planned |
-| 6. Sentinel-1 flood labels | | planned |
-| 7. Master dataset, models, SHAP, persistence, impact, dashboard | | planned |
+| 3. Static layers: DEM, JRC water, WorldCover, WorldPop, OSM roads | `03_download_static.py` | done |
+| 3b. OSM facilities, waterways, embankments, sluices (Geofabrik extract) | `03b_osm_features.py` | done |
+| 4. Static features per grid cell (31 features) | `04_static_features.py` | done |
+| 5. CHIRPS daily rainfall + ERA5/ERA5-Land daily, 2015–2025 | `05_download_climate.py` | done |
+| 6. Sentinel-1 RTC VV/VH stack, 20 m, settled unions | `06_sentinel1_stack.py` | tested on Amphan window; full archive pending |
+| 7. Flood labels (change detection + calibration on non-event dates) | | next |
+| 8. Dynamic features, master dataset, models, SHAP, persistence, impact, dashboard | | planned |
+
+### First label check: Cyclone Amphan (landfall 20 May 2020)
+
+Prototype change detection (VV below an Otsu threshold, water in the post image but not in
+the same-orbit pre-event image, JRC permanent water removed). Mean temporary-water share of
+cells, by union:
+
+| Union | 16 May (pre) | 22 May | 28 May | 9 Jun |
+|---|---|---|---|---|
+| Gabura | 0.0 % | **17.2 %** | **17.0 %** | 11.6 % |
+| Buri Goalini | 0.0 % | 14.1 % | 10.5 % | 10.6 % |
+| Padma Pukur | 0.0 % | 13.8 % | 11.8 % | 11.4 % |
+| Bhurulia | 0.0 % | 4.2 % | 3.4 % | 5.1 % |
+
+Gabura (embankment breaches during Amphan) ranks highest and stays inundated, as expected.
+A 5–10 % background change in every union (monsoon onset, aquaculture ghers, speckle)
+must be calibrated on non-event dates before these become training labels.
 
 ## Setup
 
@@ -58,14 +77,22 @@ cd 05_scripts
 python 01_make_boundary.py
 python 02_make_grid.py
 python 03_download_static.py
+python 03b_osm_features.py
+python 04_static_features.py
+python 05_download_climate.py
+python 06_sentinel1_stack.py          # or one window: python 06_sentinel1_stack.py 2020-05-10 2020-06-12
 ```
 
 All data sources are open and need no login (Copernicus DEM, JRC Global Surface Water,
+CHIRPS, ERA5 via Open-Meteo, Sentinel-1 RTC via Microsoft Planetary Computer,
 ESA WorldCover, WorldPop, OpenStreetMap, geoBoundaries/BBS-OCHA union boundaries).
 
 ## Data notes
 
 - The OSM upazila polygon extends ~1,000 km² into the Bay of Bengal, so the study area is
   the union of the land units from BBS/OCHA boundaries.
+- About 45–47 % of the settled area is water in WorldCover / JRC (shrimp and fish ghers), so
+  "temporary water" must be measured against a same-orbit Sentinel-1 reference, not only
+  the JRC permanent-water mask.
 - Copernicus GLO-30 is a surface model (includes trees and buildings); a bare-earth DEM
   should be considered for the low-lying polders.

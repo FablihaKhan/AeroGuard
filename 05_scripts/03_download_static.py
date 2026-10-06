@@ -2,7 +2,8 @@
 
 Rasters are read straight from cloud-optimised GeoTIFFs over HTTP and only the study-area
 window (+ buffer) is saved, in the source CRS and resolution, to 01_bronze_raw/.
-Vector data come from OpenStreetMap through Overpass (osmnx).
+Road network from OpenStreetMap through Overpass (osmnx); a Geofabrik Bangladesh extract
+for facilities and water infrastructure (processed in 03b_osm_features.py).
 
 Every file is appended to 00_documentation/download_manifest.csv with URL, date and sha256.
 """
@@ -29,23 +30,6 @@ WORLDCOVER = ("https://esa-worldcover.s3.eu-central-1.amazonaws.com/v200/2021/ma
               "ESA_WorldCover_10m_2021_v200_N21E087_Map.tif")
 WORLDPOP = ("https://data.worldpop.org/GIS/Population/Global_2000_2020_Constrained/2020/BSGM/BGD/"
             "bgd_ppp_2020_constrained.tif")
-
-OSM_TAGS = {
-    "facilities": {
-        "amenity": ["hospital", "clinic", "doctors", "health_post", "pharmacy", "shelter",
-                    "school", "college", "place_of_worship", "marketplace", "police", "townhall"],
-        "healthcare": True,
-        "emergency": ["assembly_point", "disaster_shelter"],
-        "building": ["hospital", "school", "shelter"],
-    },
-    "water_infra": {
-        "waterway": ["river", "canal", "stream", "drain", "ditch", "sluice_gate", "weir", "dam", "lock_gate"],
-        "man_made": ["dyke", "embankment", "sluice_gate"],
-        "embankment": True,
-        "natural": ["water", "coastline"],
-    },
-}
-
 
 def study_bounds_geo():
     study = gpd.read_file(SILVER / "boundary" / "study_area_v01.gpkg")
@@ -81,21 +65,6 @@ def clip_remote(urls, out: Path, bounds):
     return out
 
 
-OVERPASS_MIRRORS = ["https://overpass-api.de/api", "https://overpass.kumi.systems/api",
-                    "https://overpass.private.coffee/api"]
-
-
-def osm_features(bbox, tags):
-    """features_from_bbox with fallback across Overpass mirrors (the main server often times out)."""
-    for url in OVERPASS_MIRRORS:
-        ox.settings.overpass_url = url
-        try:
-            return ox.features_from_bbox(bbox, tags).reset_index()
-        except Exception as e:  # network errors from requests/osmnx
-            log.warning("overpass %s failed: %s", url, type(e).__name__)
-    raise RuntimeError("all Overpass mirrors failed")
-
-
 def main():
     bounds = study_bounds_geo()
     log.info("download bounds (lon/lat): %s", [round(b, 4) for b in bounds])
@@ -121,7 +90,7 @@ def main():
 
     # --- OpenStreetMap -----------------------------------------------------------------
     ox.settings.use_cache = True
-    ox.settings.requests_timeout = 60
+    ox.settings.requests_timeout = 240
     ox.settings.cache_folder = str(BRONZE / "osm" / "_overpass_cache")
     west, south, east, north = bounds
     osm_dir = BRONZE / "osm"
@@ -140,18 +109,12 @@ def main():
         log.info("osm roads: %d nodes, %d edges", len(nodes), len(edges))
     record(rows, roads_path, "OpenStreetMap road network (osmnx, network_type=all)", "overpass-api.de")
 
-    for name, tags in OSM_TAGS.items():
-        path = osm_dir / f"osm_{name}_shyamnagar_{TODAY.replace('-', '')}.gpkg"
-        if not path.exists():
-            feats = osm_features((west, south, east, north), tags)
-            for col in feats.columns:
-                if col != "geometry" and feats[col].dtype == object:
-                    feats[col] = feats[col].astype(str).replace("nan", None)
-            for gtype, sub in feats.groupby(feats.geometry.geom_type):
-                sub.to_file(path, layer=gtype.lower(), driver="GPKG")
-            log.info("osm %s: %d features %s", name, len(feats),
-                     feats.geometry.geom_type.value_counts().to_dict())
-        record(rows, path, f"OpenStreetMap {name}", "overpass-api.de")
+    # Facilities and water infrastructure: Overpass times out for these tag sets, so they are
+    # read from a dated Geofabrik extract in 03b_osm_features.py instead.
+    pbf = download("https://download.geofabrik.de/asia/bangladesh-latest.osm.pbf",
+                   osm_dir / "_national" / f"bangladesh-{TODAY.replace('-', '')}.osm.pbf", log)
+    record(rows, pbf, "OpenStreetMap Bangladesh extract (Geofabrik)",
+           "https://download.geofabrik.de/asia/bangladesh-latest.osm.pbf")
 
     manifest = DOCS / "download_manifest.csv"
     new = pd.DataFrame(rows)

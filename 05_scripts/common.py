@@ -7,8 +7,12 @@ import logging
 import sys
 from pathlib import Path
 
+import numpy as np
+import rasterio
 import requests
 import yaml
+from rasterio.transform import from_origin
+from rasterio.warp import reproject
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -23,6 +27,7 @@ DOCS = ROOT / CONFIG["paths"]["docs"]
 
 CRS = CONFIG["project"]["crs_projected"]
 CRS_GEO = CONFIG["project"]["crs_geographic"]
+CELL = CONFIG["grid"]["cell_size_m"]
 
 USER_AGENT = "shyamnagar-thesis-research/0.1 (BUET CSE)"
 
@@ -70,3 +75,34 @@ def download(url: str, dest: Path, logger: logging.Logger | None = None,
     if logger:
         logger.info("downloaded: %s (%.1f MB)", dest.relative_to(ROOT), dest.stat().st_size / 1e6)
     return dest
+
+
+class Frame:
+    """Target raster frame covering the grid extent, origin aligned to the 500 m cells."""
+
+    def __init__(self, grid):
+        # grid["cx"], not grid.cx (that is the geopandas coordinate indexer)
+        self.x0 = float((grid["cx"] - CELL / 2 - grid["col"] * CELL).iloc[0])
+        self.y0 = float((grid["cy"] + CELL / 2 + grid["row"] * CELL).iloc[0])
+        self.nrows = int(grid.row.max()) + 1
+        self.ncols = int(grid.col.max()) + 1
+        self.rows = grid.row.to_numpy()
+        self.cols = grid.col.to_numpy()
+
+    def warp(self, path, res, resampling, dtype="float32", nodata=np.nan):
+        k = CELL // res
+        shape = (self.nrows * k, self.ncols * k)
+        transform = from_origin(self.x0, self.y0, res, res)
+        out = np.full(shape, nodata, dtype=dtype)
+        src = path if hasattr(path, "read") else rasterio.open(path)
+        with src:
+            reproject(rasterio.band(src, 1), out, dst_transform=transform, dst_crs=CRS,
+                      dst_nodata=nodata, resampling=resampling,
+                      src_nodata=src.nodata)
+        return out, transform
+
+    def blocks(self, arr, res):
+        """Return array (n_cells, k*k) of the sub-pixels inside each grid cell."""
+        k = CELL // res
+        b = arr.reshape(self.nrows, k, self.ncols, k).swapaxes(1, 2)
+        return b[self.rows, self.cols].reshape(len(self.rows), k * k)
